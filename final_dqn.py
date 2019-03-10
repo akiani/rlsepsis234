@@ -516,13 +516,17 @@ class FinalDQN(DQN):
                 # perform action in env
                 new_state, action_real, reward, done = env.step()
 
+                # sofa for comparing results.
+                sofa = state[0, 0, 37]
+
                 # store in replay memory
                 replay_buffer.store_effect(idx, action_real, reward, done)
                 state = new_state
 
                 iv_pred, vaso_pred = action_map[action_pred]
                 iv_real, vaso_real = action_map[action_real]
-                res_episode.append([iv_pred, vaso_pred, iv_real, vaso_real])
+                res_episode.append(
+                    [sofa, iv_pred, vaso_pred, iv_real, vaso_real])
                 # count reward
                 total_reward += reward
                 if done:
@@ -544,7 +548,9 @@ class FinalDQN(DQN):
         # print(res)
         output = pd.DataFrame(
             res,
-            columns=['iv_pred', 'vaso_pred', 'iv_real', 'vaso_real', 'died'])
+            columns=[
+                'sofa', 'iv_pred', 'vaso_pred', 'iv_real', 'vaso_real', 'died'
+            ])
         output.to_csv(
             os.path.join(
                 self.config.output_path,
