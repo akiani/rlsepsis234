@@ -494,6 +494,12 @@ class FinalDQN(DQN):
 
         env.init_validate()
         res = []
+        action_map = {}
+        count = 0
+        for i in range(5):
+            for j in range(5):
+                action_map[count] = [i, j]
+                count += 1
         for i in range(num_episodes):
             total_reward = 0
             state = env.reset()
@@ -514,7 +520,9 @@ class FinalDQN(DQN):
                 replay_buffer.store_effect(idx, action_real, reward, done)
                 state = new_state
 
-                res_episode.append([action_pred, action_real])
+                iv_pred, vaso_pred = action_map[action_pred]
+                iv_real, vaso_real = action_map[action_real]
+                res_episode.append([iv_pred, vaso_pred, iv_real, vaso_real])
                 # count reward
                 total_reward += reward
                 if done:
@@ -535,7 +543,8 @@ class FinalDQN(DQN):
 
         # print(res)
         output = pd.DataFrame(
-            res, columns=['action_pred', 'action_real', 'died'])
+            res,
+            columns=['iv_pred', 'vaso_pred', 'iv_real', 'vaso_real', 'died'])
         output.to_csv(
             os.path.join(
                 self.config.output_path,
