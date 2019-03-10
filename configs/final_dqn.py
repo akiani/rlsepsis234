@@ -7,6 +7,7 @@ class config():
     high = 255.
 
     # model and training config
+    # there are 1702 patients in validation set.
     num_episodes_test = 20
     grad_clip = True
     clip_val = 20
@@ -33,7 +34,7 @@ class config():
     batch_size = 32
     buffer_size = 500
     target_update_freq = 500
-    gamma = 0.99
+    gamma = 1
     learning_freq = 4
     state_history = 4
     lr_begin = 0.00025

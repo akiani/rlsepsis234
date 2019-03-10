@@ -1,6 +1,10 @@
+import datetime
 import numpy as np
 import random as rnd
+import pandas as pd
+import os
 import sys
+import time
 import tensorflow as tf
 import tensorflow.contrib.layers as layers
 
@@ -391,6 +395,9 @@ class FinalDQN(DQN):
                 last_record = 0
                 self.record()
 
+        # Run testing for off policy
+        if self.config.train_off_policy:
+            self.validate()
         # last words
         self.logger.info("- Training done.")
         self.save()
@@ -451,6 +458,89 @@ class FinalDQN(DQN):
 
             # updates to perform at the end of an episode
             rewards.append(total_reward)
+
+        avg_reward = np.mean(rewards)
+        sigma_reward = np.sqrt(np.var(rewards) / len(rewards))
+
+        if num_episodes > 1:
+            msg = "Average reward: {:04.2f} +/- {:04.2f}".format(
+                avg_reward, sigma_reward)
+            self.logger.info(msg)
+
+        return avg_reward
+
+    def validate(self, env=None, num_episodes=None):
+        """
+        For the off policy env, validate and compare the actions chosen by the
+        agent and by physicians.
+        """
+        if not self.config.train_off_policy:
+            self.logger.info("Not running off policy, not validating...")
+            return 0
+
+        self.logger.info("Validating...")
+
+        # arguments defaults
+        if num_episodes is None:
+            num_episodes = self.config.num_episodes_test
+
+        if env is None:
+            env = self.env
+
+        # replay memory to play
+        replay_buffer = ReplayBuffer(self.config.buffer_size,
+                                     self.config.state_history)
+        rewards = []
+
+        env.init_validate()
+        res = []
+        for i in range(num_episodes):
+            total_reward = 0
+            state = env.reset()
+            res_episode = []
+            while True:
+                if self.config.render_test: env.render()
+
+                # store last state in buffer
+                idx = replay_buffer.store_frame(state)
+                q_input = replay_buffer.encode_recent_observation()
+
+                action_pred = self.get_action(q_input)
+
+                # perform action in env
+                new_state, action_real, reward, done = env.step()
+
+                # store in replay memory
+                replay_buffer.store_effect(idx, action_real, reward, done)
+                state = new_state
+
+                res_episode.append([action_pred, action_real])
+                # count reward
+                total_reward += reward
+                if done:
+                    break
+
+            # updates to perform at the end of an episode
+            rewards.append(total_reward)
+
+            if total_reward != -15 and total_reward != 15:
+                self.logger.info("reward is not +- 15")
+            mortal = 0
+            if total_reward == -15:
+                mortal = 1
+            for i in range(len(res_episode)):
+                res_episode[i].append(mortal)
+                print("actions: {}".format(res_episode[i]))
+            res += res_episode
+
+        # print(res)
+        output = pd.DataFrame(
+            res, columns=['action_pred', 'action_real', 'died'])
+        output.to_csv(
+            os.path.join(
+                self.config.output_path,
+                "pred_real_compare" + datetime.datetime.fromtimestamp(
+                    time.time()).strftime('%Y-%m-%dT%H:%M:%S')))
 
         avg_reward = np.mean(rewards)
         sigma_reward = np.sqrt(np.var(rewards) / len(rewards))

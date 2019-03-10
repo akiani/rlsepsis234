@@ -28,13 +28,32 @@ class EnvOffPol(object):
     """
 
     def __init__(self, data_dir):
-        self.samples = pd.read_csv(
-            os.path.join(data_dir, 'train_state_action_reward_df.csv')).values
         self.action_space = ActionSpace(25)
         # hacky way to reuse replay_buffer etc.
         self.observation_space = ObservationSpace([1, 1, 46])
+        self.data_dir = data_dir
+        self.init_train()
+
+    def init_train(self):
+        self.samples = pd.read_csv(
+            os.path.join(self.data_dir,
+                         'train_state_action_reward_df.csv')).values
         self.index = 0
-        #print(sample_with_label[0:10, :])
+        prev_p_id = 0
+        self.p_starting_indices = []
+        for i in range(len(self.samples)):
+            if self.samples[i, 0] != prev_p_id:
+                self.p_starting_indices.append(i)
+            prev_p_id = self.samples[i, 0]
+        self.ps_index = 0
+        print("There are {} distinct patients with {} records".format(
+            len(self.p_starting_indices), len(self.samples)))
+
+    def init_validate(self):
+        self.samples = pd.read_csv(
+            os.path.join(self.data_dir,
+                         'val_state_action_reward_df.csv')).values
+        self.index = 0
         prev_p_id = 0
         self.p_starting_indices = []
         for i in range(len(self.samples)):
@@ -79,8 +98,8 @@ class EnvOffPol(object):
                 "Off Policy Env patients exhausted... returning to first patient."
             )
         self.index = self.p_starting_indices[self.ps_index]
-        print("Onto patient {} at record {}".format(
-            self.samples[self.index, 0], self.index))
+        print("Onto patient {} at record {} of {}".format(
+            self.samples[self.index, 0], self.index, len(self.samples)))
         self.ps_index += 1
         return np.reshape(
             self._features(self.index), self.observation_space.shape)
