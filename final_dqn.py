@@ -17,6 +17,9 @@ from utils.replay_buffer import ReplayBuffer
 
 from configs.final_dqn import config
 
+sys.path.append('/Users/tding/cs234/gym-sepsis/')
+from gym_sepsis.envs.sepsis_env import SepsisEnv
+
 
 class LinearSchedule(object):
     """
@@ -105,6 +108,7 @@ class FinalDQN(DQN):
         """
         state_shape = list(self.env.observation_space.shape)
 
+        print(state_shape)
         self.s = tf.placeholder(
             tf.uint8,
             shape=(None, state_shape[0], state_shape[1],
@@ -300,9 +304,14 @@ class FinalDQN(DQN):
         replay_buffer = ReplayBuffer(self.config.buffer_size,
                                      self.config.state_history)
         rewards = deque(maxlen=self.config.num_episodes_test)
+        # initial val in case episodes are longer than eval period
+        rewards.append(0)
         max_q_values = deque(maxlen=1000)
         q_values = deque(maxlen=1000)
         self.init_averages()
+
+        # sanity check
+        self.episode_len = 0
 
         t = last_eval = last_record = 0  # time control of nb of steps
         scores_eval = []  # list of scores computed at iteration time
@@ -330,7 +339,7 @@ class FinalDQN(DQN):
                 max_q_values.append(max(q_values))
                 q_values += list(q_values)
 
-                if self.config.train_off_policy:
+                if self.config.train_env is 'offpol':
                     # tding: action is no longer based on e-greedy. it's returned by the env.
                     # return val info was removed
                     # action produced from e-greedy above is overridden.
@@ -341,6 +350,12 @@ class FinalDQN(DQN):
                     # USE THIS FOR MODEL BASED
                     action = exp_schedule.get_action(best_action)
                     new_state, reward, done, info = self.env.step(action)
+                    # logging
+                    self.episode_len += 1
+                    if done:
+                        print("an episode has ended, length {}".format(
+                            self.episode_len))
+                        self.episode_len = 0
 
                 # store the transition
                 replay_buffer.store_effect(idx, action, reward, done)
@@ -354,6 +369,7 @@ class FinalDQN(DQN):
                 if ((t > self.config.learning_start)
                         and (t % self.config.log_freq == 0)
                         and (t % self.config.learning_freq == 0)):
+                    # print(rewards)
                     self.update_averages(rewards, max_q_values, q_values,
                                          scores_eval)
                     exp_schedule.update(t)
@@ -396,7 +412,7 @@ class FinalDQN(DQN):
                 self.record()
 
         # Run testing for off policy
-        if self.config.train_off_policy:
+        if self.config.train_env is 'offpol' or 'model':
             self.validate()
         # last words
         self.logger.info("- Training done.")
@@ -412,8 +428,9 @@ class FinalDQN(DQN):
         for off policy environment, since there is no model, agent cannot
         interact with model for evaluation.
         """
-        if self.config.train_off_policy:
-            self.logger.info("Running off policy, not evaluating...")
+        if self.config.train_env in ('offpol', 'model'):
+            self.logger.info("Running {}, not evaluating...".format(
+                self.config.train_env))
             return 0
 
         # log our activity only if default call
@@ -446,6 +463,7 @@ class FinalDQN(DQN):
 
                 # perform action in env
                 new_state, reward, done, info = env.step(action)
+                # print((state, action, reward, done, new_state))
 
                 # store in replay memory
                 replay_buffer.store_effect(idx, action, reward, done)
@@ -474,8 +492,9 @@ class FinalDQN(DQN):
         For the off policy env, validate and compare the actions chosen by the
         agent and by physicians.
         """
-        if not self.config.train_off_policy:
-            self.logger.info("Not running off policy, not validating...")
+        if self.config.train_env not in ('offpol', 'model'):
+            self.logger.info("Running env {}, not validating...".format(
+                self.config.train_env))
             return 0
 
         self.logger.info("Validating...")
@@ -485,7 +504,7 @@ class FinalDQN(DQN):
             num_episodes = self.config.num_episodes_test
 
         if env is None:
-            env = self.env
+            env = EnvOffPol("data")
 
         # replay memory to play
         replay_buffer = ReplayBuffer(self.config.buffer_size,
@@ -582,8 +601,10 @@ class FinalDQN(DQN):
 Use deep Q network for test environment.
 """
 if __name__ == '__main__':
-    if config.train_off_policy:
+    if config.train_env is 'offpol':
         env = EnvOffPol("data")
+    elif config.train_env is 'model':
+        env = SepsisEnv()
     else:
         env = EnvTest((80, 80, 1))
 
