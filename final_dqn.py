@@ -335,7 +335,7 @@ class FinalDQN(DQN):
                     # return val info was removed
                     # action produced from e-greedy above is overridden.
                     # USE THIS FOR OFF POLICY
-                    new_state, action, reward, done = self.env.step()
+                    new_state, action, reward, done, ids = self.env.step()
                 else:
                     # perform action in env
                     # USE THIS FOR MODEL BASED
@@ -514,8 +514,13 @@ class FinalDQN(DQN):
                 action_pred = self.get_action(q_input)
 
                 # perform action in env
-                new_state, action_real, reward, done = env.step()
+                new_state, action_real, reward, done, ids = env.step()
 
+                subject_id = ids[0]
+                hadm_id = ids[1]
+                icustay_id = ids[2]
+                interval_start_time = ids[3]
+                interval_end_time = ids[4]
                 # sofa for comparing results.
                 sofa = state[0, 0, 37]
 
@@ -525,8 +530,11 @@ class FinalDQN(DQN):
 
                 iv_pred, vaso_pred = action_map[action_pred]
                 iv_real, vaso_real = action_map[action_real]
-                res_episode.append(
-                    [sofa, iv_pred, vaso_pred, iv_real, vaso_real])
+                res_episode.append([
+                    subject_id, hadm_id, icustay_id, interval_start_time,
+                    interval_end_time, sofa, iv_pred, vaso_pred, iv_real,
+                    vaso_real
+                ])
                 # count reward
                 total_reward += reward
                 if done:
@@ -542,14 +550,16 @@ class FinalDQN(DQN):
                 mortal = 1
             for i in range(len(res_episode)):
                 res_episode[i].append(mortal)
-                print("actions: {}".format(res_episode[i]))
+                #print("actions: {}".format(res_episode[i]))
             res += res_episode
 
         # print(res)
         output = pd.DataFrame(
             res,
             columns=[
-                'sofa', 'iv_pred', 'vaso_pred', 'iv_real', 'vaso_real', 'died'
+                'subject_id', 'hadm_id', 'icustay_id', 'interval_start_time',
+                'interval_end_time', 'sofa', 'iv_pred', 'vaso_pred', 'iv_real',
+                'vaso_real', 'died'
             ])
         output.to_csv(
             os.path.join(
