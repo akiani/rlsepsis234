@@ -4,3 +4,6 @@
 [submodule "cs238_sepsis_rl"]
 	path = cs238_sepsis_rl
 	url = git@github.com:spfohl/cs238_sepsis_rl.git
+[submodule "gym-sepsis"]
+	path = gym-sepsis
+	url = git@github.com:akiani/gym-sepsis.git
