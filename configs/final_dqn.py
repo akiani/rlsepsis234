@@ -17,12 +17,14 @@ class config():
     eval_freq = 100
     soft_epsilon = 0
     use_batch_norm = True
+    reg_lambda = 5
+    reg_thresh = 15
     """
     Enviornment to train on. Can use 'offpol' or 'model'. Otherwise will run on
     test env.
     Off policy env does not take action in step(). Rather, it returns action.
     """
-    train_env = 'model'
+    train_env = 'offpol'
 
     # output config
     output_path = "results/final_dqn_" + train_env + "/"

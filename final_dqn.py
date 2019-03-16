@@ -108,7 +108,7 @@ class FinalDQN(DQN):
         """
         state_shape = list(self.env.observation_space.shape)
 
-        print(state_shape)
+        # print(state_shape)
         self.s = tf.placeholder(
             tf.uint8,
             shape=(None, state_shape[0], state_shape[1],
@@ -229,8 +229,8 @@ class FinalDQN(DQN):
         q_vars = tf.get_collection(
             tf.GraphKeys.GLOBAL_VARIABLES, scope=q_scope)
         with tf.variable_scope(target_q_scope, reuse=tf.AUTO_REUSE):
-            print(q_scope)
-            print(target_q_scope)
+            # print(q_scope)
+            #print(target_q_scope)
             all_ops = [
                 tf.assign(
                     tf.get_variable(
@@ -249,9 +249,9 @@ class FinalDQN(DQN):
         """
         num_actions = self.env.action_space.n
 
-        print(q)
-        print(target_q)
-        print(self.config.gamma)
+        #print(q)
+        #print(target_q)
+        #print(self.config.gamma)
         q_samp = tf.where(
             self.done_mask, tf.cast(self.r, tf.float32),
             tf.add(
@@ -261,7 +261,9 @@ class FinalDQN(DQN):
         q_pred = tf.reduce_sum(
             tf.multiply(tf.one_hot(self.a, num_actions, dtype=tf.float32), q),
             axis=1)
-        self.loss = tf.reduce_mean(tf.squared_difference(q_samp, q_pred))
+        self.loss = tf.reduce_mean(tf.squared_difference(
+            q_samp, q_pred)) + self.config.reg_lambda * tf.reduce_sum(
+                tf.maximum((tf.abs(q_samp) - self.config.reg_thresh), 0))
 
     def add_optimizer_op(self, scope):
         """
@@ -345,11 +347,13 @@ class FinalDQN(DQN):
                     # action produced from e-greedy above is overridden.
                     # USE THIS FOR OFF POLICY
                     new_state, action, reward, done, ids = self.env.step()
+                    # print(action, reward, done)
                 else:
                     # perform action in env
                     # USE THIS FOR MODEL BASED
                     action = exp_schedule.get_action(best_action)
                     new_state, reward, done, info = self.env.step(action)
+                    # print(action, reward, done)
                     # logging
                     self.episode_len += 1
                     if done:
@@ -530,7 +534,7 @@ class FinalDQN(DQN):
                 idx = replay_buffer.store_frame(state)
                 q_input = replay_buffer.encode_recent_observation()
 
-                action_pred = self.get_action(q_input)
+                action_pred, unused = self.get_best_action(q_input)
 
                 # perform action in env
                 new_state, action_real, reward, done, ids = env.step()
@@ -602,7 +606,7 @@ Use deep Q network for test environment.
 """
 if __name__ == '__main__':
     if config.train_env is 'offpol':
-        env = EnvOffPol("data")
+        env = EnvOffPol("data2")
     elif config.train_env is 'model':
         env = SepsisEnv()
     else:
