@@ -1,3 +1,6 @@
 [submodule "baselines"]
 	path = baselines
 	url = https://github.com/openai/baselines.git
+[submodule "cs238_sepsis_rl"]
+	path = cs238_sepsis_rl
+	url = git@github.com:spfohl/cs238_sepsis_rl.git
