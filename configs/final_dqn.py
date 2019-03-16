@@ -8,29 +8,33 @@ class config():
 
     # model and training config
     # there are 1702 patients in validation set.
-    num_episodes_test = 20
+    num_episodes_test = 1702
     grad_clip = True
     clip_val = 20
     saving_freq = 5000
     log_freq = 50
+    #default 100
     eval_freq = 100
     soft_epsilon = 0
     use_batch_norm = True
+    reg_lambda = 5
+    reg_thresh = 15
     """
+    Enviornment to train on. Can use 'offpol' or 'model'. Otherwise will run on
+    test env.
     Off policy env does not take action in step(). Rather, it returns action.
     """
-    train_off_policy = True
+    train_env = 'offpol'
 
     # output config
-    output_path = "results/final_dqn/"
-    if train_off_policy:
-        output_path = "results/final_dqn_offpol/"
+    output_path = "results/final_dqn_" + train_env + "/"
     model_output = output_path + "model.weights/"
     log_path = output_path + "log.txt"
     plot_output = output_path + "scores.png"
 
     # hyper params
-    nsteps_train = 10000
+    # 153582 total records for training in mimic
+    nsteps_train = 153582
     batch_size = 32
     buffer_size = 500
     target_update_freq = 500

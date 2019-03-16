@@ -17,6 +17,9 @@ from utils.replay_buffer import ReplayBuffer
 
 from configs.final_dqn import config
 
+sys.path.append('/Users/tding/cs234/gym-sepsis/')
+from gym_sepsis.envs.sepsis_env import SepsisEnv
+
 
 class LinearSchedule(object):
     """
@@ -105,6 +108,7 @@ class FinalDQN(DQN):
         """
         state_shape = list(self.env.observation_space.shape)
 
+        # print(state_shape)
         self.s = tf.placeholder(
             tf.uint8,
             shape=(None, state_shape[0], state_shape[1],
@@ -225,8 +229,8 @@ class FinalDQN(DQN):
         q_vars = tf.get_collection(
             tf.GraphKeys.GLOBAL_VARIABLES, scope=q_scope)
         with tf.variable_scope(target_q_scope, reuse=tf.AUTO_REUSE):
-            print(q_scope)
-            print(target_q_scope)
+            # print(q_scope)
+            #print(target_q_scope)
             all_ops = [
                 tf.assign(
                     tf.get_variable(
@@ -245,9 +249,9 @@ class FinalDQN(DQN):
         """
         num_actions = self.env.action_space.n
 
-        print(q)
-        print(target_q)
-        print(self.config.gamma)
+        #print(q)
+        #print(target_q)
+        #print(self.config.gamma)
         q_samp = tf.where(
             self.done_mask, tf.cast(self.r, tf.float32),
             tf.add(
@@ -257,7 +261,9 @@ class FinalDQN(DQN):
         q_pred = tf.reduce_sum(
             tf.multiply(tf.one_hot(self.a, num_actions, dtype=tf.float32), q),
             axis=1)
-        self.loss = tf.reduce_mean(tf.squared_difference(q_samp, q_pred))
+        self.loss = tf.reduce_mean(tf.squared_difference(
+            q_samp, q_pred)) + self.config.reg_lambda * tf.reduce_sum(
+                tf.maximum((tf.abs(q_samp) - self.config.reg_thresh), 0))
 
     def add_optimizer_op(self, scope):
         """
@@ -300,9 +306,14 @@ class FinalDQN(DQN):
         replay_buffer = ReplayBuffer(self.config.buffer_size,
                                      self.config.state_history)
         rewards = deque(maxlen=self.config.num_episodes_test)
+        # initial val in case episodes are longer than eval period
+        rewards.append(0)
         max_q_values = deque(maxlen=1000)
         q_values = deque(maxlen=1000)
         self.init_averages()
+
+        # sanity check
+        self.episode_len = 0
 
         t = last_eval = last_record = 0  # time control of nb of steps
         scores_eval = []  # list of scores computed at iteration time
@@ -330,17 +341,25 @@ class FinalDQN(DQN):
                 max_q_values.append(max(q_values))
                 q_values += list(q_values)
 
-                if self.config.train_off_policy:
+                if self.config.train_env is 'offpol':
                     # tding: action is no longer based on e-greedy. it's returned by the env.
                     # return val info was removed
                     # action produced from e-greedy above is overridden.
                     # USE THIS FOR OFF POLICY
-                    new_state, action, reward, done = self.env.step()
+                    new_state, action, reward, done, ids = self.env.step()
+                    # print(action, reward, done)
                 else:
                     # perform action in env
                     # USE THIS FOR MODEL BASED
                     action = exp_schedule.get_action(best_action)
                     new_state, reward, done, info = self.env.step(action)
+                    # print(action, reward, done)
+                    # logging
+                    self.episode_len += 1
+                    if done:
+                        print("an episode has ended, length {}".format(
+                            self.episode_len))
+                        self.episode_len = 0
 
                 # store the transition
                 replay_buffer.store_effect(idx, action, reward, done)
@@ -354,6 +373,7 @@ class FinalDQN(DQN):
                 if ((t > self.config.learning_start)
                         and (t % self.config.log_freq == 0)
                         and (t % self.config.learning_freq == 0)):
+                    # print(rewards)
                     self.update_averages(rewards, max_q_values, q_values,
                                          scores_eval)
                     exp_schedule.update(t)
@@ -396,7 +416,7 @@ class FinalDQN(DQN):
                 self.record()
 
         # Run testing for off policy
-        if self.config.train_off_policy:
+        if self.config.train_env is 'offpol' or 'model':
             self.validate()
         # last words
         self.logger.info("- Training done.")
@@ -412,8 +432,9 @@ class FinalDQN(DQN):
         for off policy environment, since there is no model, agent cannot
         interact with model for evaluation.
         """
-        if self.config.train_off_policy:
-            self.logger.info("Running off policy, not evaluating...")
+        if self.config.train_env in ('offpol', 'model'):
+            self.logger.info("Running {}, not evaluating...".format(
+                self.config.train_env))
             return 0
 
         # log our activity only if default call
@@ -446,6 +467,7 @@ class FinalDQN(DQN):
 
                 # perform action in env
                 new_state, reward, done, info = env.step(action)
+                # print((state, action, reward, done, new_state))
 
                 # store in replay memory
                 replay_buffer.store_effect(idx, action, reward, done)
@@ -474,8 +496,9 @@ class FinalDQN(DQN):
         For the off policy env, validate and compare the actions chosen by the
         agent and by physicians.
         """
-        if not self.config.train_off_policy:
-            self.logger.info("Not running off policy, not validating...")
+        if self.config.train_env not in ('offpol', 'model'):
+            self.logger.info("Running env {}, not validating...".format(
+                self.config.train_env))
             return 0
 
         self.logger.info("Validating...")
@@ -485,7 +508,7 @@ class FinalDQN(DQN):
             num_episodes = self.config.num_episodes_test
 
         if env is None:
-            env = self.env
+            env = EnvOffPol("data")
 
         # replay memory to play
         replay_buffer = ReplayBuffer(self.config.buffer_size,
@@ -511,11 +534,16 @@ class FinalDQN(DQN):
                 idx = replay_buffer.store_frame(state)
                 q_input = replay_buffer.encode_recent_observation()
 
-                action_pred = self.get_action(q_input)
+                action_pred, unused = self.get_best_action(q_input)
 
                 # perform action in env
-                new_state, action_real, reward, done = env.step()
+                new_state, action_real, reward, done, ids = env.step()
 
+                subject_id = ids[0]
+                hadm_id = ids[1]
+                icustay_id = ids[2]
+                interval_start_time = ids[3]
+                interval_end_time = ids[4]
                 # sofa for comparing results.
                 sofa = state[0, 0, 37]
 
@@ -525,8 +553,11 @@ class FinalDQN(DQN):
 
                 iv_pred, vaso_pred = action_map[action_pred]
                 iv_real, vaso_real = action_map[action_real]
-                res_episode.append(
-                    [sofa, iv_pred, vaso_pred, iv_real, vaso_real])
+                res_episode.append([
+                    subject_id, hadm_id, icustay_id, interval_start_time,
+                    interval_end_time, sofa, iv_pred, vaso_pred, iv_real,
+                    vaso_real
+                ])
                 # count reward
                 total_reward += reward
                 if done:
@@ -542,14 +573,16 @@ class FinalDQN(DQN):
                 mortal = 1
             for i in range(len(res_episode)):
                 res_episode[i].append(mortal)
-                print("actions: {}".format(res_episode[i]))
+                #print("actions: {}".format(res_episode[i]))
             res += res_episode
 
         # print(res)
         output = pd.DataFrame(
             res,
             columns=[
-                'sofa', 'iv_pred', 'vaso_pred', 'iv_real', 'vaso_real', 'died'
+                'subject_id', 'hadm_id', 'icustay_id', 'interval_start_time',
+                'interval_end_time', 'sofa', 'iv_pred', 'vaso_pred', 'iv_real',
+                'vaso_real', 'died'
             ])
         output.to_csv(
             os.path.join(
@@ -572,8 +605,10 @@ class FinalDQN(DQN):
 Use deep Q network for test environment.
 """
 if __name__ == '__main__':
-    if config.train_off_policy:
-        env = EnvOffPol("data")
+    if config.train_env is 'offpol':
+        env = EnvOffPol("data2")
+    elif config.train_env is 'model':
+        env = SepsisEnv()
     else:
         env = EnvTest((80, 80, 1))
 

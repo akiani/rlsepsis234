@@ -88,6 +88,9 @@ class EnvOffPol(object):
             return True
         return False
 
+    def _id_prefix(self):
+        return self.samples[self.index, 0:5]
+
     def reset(self):
         """
         calling reset jumps to the next patient.
@@ -114,7 +117,8 @@ class EnvOffPol(object):
                 "Off Policy Env samples exhausted... returning to first sample."
             )
         res = (np.reshape(self._new_state(), self.observation_space.shape),
-               self._action(), self._reward(), self._is_terminal())
+               self._action(), self._reward(), self._is_terminal(),
+               self._id_prefix())
         #print("sample {} of {}, patient {}".format(self.index, len(
         #    self.samples), self.samples[self.index, 0]))
         self.index += 1
