@@ -231,6 +231,7 @@ class FinalDQN(DQN):
         with tf.variable_scope(target_q_scope, reuse=tf.AUTO_REUSE):
             # print(q_scope)
             #print(target_q_scope)
+            # cap target q at threshold
             all_ops = [
                 tf.assign(
                     tf.get_variable(
@@ -252,18 +253,24 @@ class FinalDQN(DQN):
         #print(q)
         #print(target_q)
         #print(self.config.gamma)
+        # Cap target at self.config.reg_thresh
         q_samp = tf.where(
             self.done_mask, tf.cast(self.r, tf.float32),
             tf.add(
                 tf.cast(self.r, tf.float32),
-                tf.scalar_mul(self.config.gamma, tf.reduce_max(
-                    target_q, axis=1))))
+                tf.scalar_mul(
+                    self.config.gamma,
+                    tf.minimum(
+                        tf.cast(self.config.reg_thresh, tf.float32),
+                        tf.reduce_max(target_q, axis=1)))))
         q_pred = tf.reduce_sum(
             tf.multiply(tf.one_hot(self.a, num_actions, dtype=tf.float32), q),
             axis=1)
         self.loss = tf.reduce_mean(tf.squared_difference(
             q_samp, q_pred)) + self.config.reg_lambda * tf.reduce_sum(
                 tf.maximum((tf.abs(q_samp) - self.config.reg_thresh), 0))
+
+        self.target_q_mean = tf.reduce_mean(target_q)
 
     def add_optimizer_op(self, scope):
         """
@@ -508,7 +515,7 @@ class FinalDQN(DQN):
             num_episodes = self.config.num_episodes_test
 
         if env is None:
-            env = EnvOffPol("data")
+            env = EnvOffPol("data3")
 
         # replay memory to play
         replay_buffer = ReplayBuffer(self.config.buffer_size,
@@ -531,6 +538,7 @@ class FinalDQN(DQN):
                 if self.config.render_test: env.render()
 
                 # store last state in buffer
+                #print("state {}".format(state))
                 idx = replay_buffer.store_frame(state)
                 q_input = replay_buffer.encode_recent_observation()
 
@@ -555,7 +563,7 @@ class FinalDQN(DQN):
                 iv_real, vaso_real = action_map[action_real]
                 res_episode.append([
                     subject_id, hadm_id, icustay_id, interval_start_time,
-                    interval_end_time, sofa, iv_pred, vaso_pred, iv_real,
+                    interval_end_time, sofa, iv_pred, iv_real, vaso_pred,
                     vaso_real
                 ])
                 # count reward
@@ -581,14 +589,14 @@ class FinalDQN(DQN):
             res,
             columns=[
                 'subject_id', 'hadm_id', 'icustay_id', 'interval_start_time',
-                'interval_end_time', 'sofa', 'iv_pred', 'vaso_pred', 'iv_real',
+                'interval_end_time', 'sofa', 'iv_pred', 'iv_real', 'vaso_pred',
                 'vaso_real', 'died'
             ])
         output.to_csv(
             os.path.join(
                 self.config.output_path,
                 "pred_real_compare" + datetime.datetime.fromtimestamp(
-                    time.time()).strftime('%Y-%m-%dT%H:%M:%S')))
+                    time.time()).strftime('%Y%m%dT%H%M%S')))
 
         avg_reward = np.mean(rewards)
         sigma_reward = np.sqrt(np.var(rewards) / len(rewards))
@@ -606,7 +614,7 @@ Use deep Q network for test environment.
 """
 if __name__ == '__main__':
     if config.train_env is 'offpol':
-        env = EnvOffPol("data2")
+        env = EnvOffPol("data3")
     elif config.train_env is 'model':
         env = SepsisEnv()
     else:

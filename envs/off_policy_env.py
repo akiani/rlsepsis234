@@ -34,35 +34,29 @@ class EnvOffPol(object):
         self.data_dir = data_dir
         self.init_train()
 
+    def _process_sessions(self):
+        self.index = 0
+        prev_stay_id = 0
+        self.p_starting_indices = []
+        for i in range(len(self.samples)):
+            if self.samples[i, 0] != prev_stay_id:
+                self.p_starting_indices.append(i)
+            prev_stay_id = self.samples[i, 0]
+        self.ps_index = 0
+        print("There are {} distinct sessions with {} records".format(
+            len(self.p_starting_indices), len(self.samples)))
+
     def init_train(self):
         self.samples = pd.read_csv(
             os.path.join(self.data_dir,
                          'train_state_action_reward_df.csv')).values
-        self.index = 0
-        prev_p_id = 0
-        self.p_starting_indices = []
-        for i in range(len(self.samples)):
-            if self.samples[i, 0] != prev_p_id:
-                self.p_starting_indices.append(i)
-            prev_p_id = self.samples[i, 0]
-        self.ps_index = 0
-        print("There are {} distinct patients with {} records".format(
-            len(self.p_starting_indices), len(self.samples)))
+        self._process_sessions()
 
     def init_validate(self):
         self.samples = pd.read_csv(
             os.path.join(self.data_dir,
-                         'val_state_action_reward_df.csv')).values
-        self.index = 0
-        prev_p_id = 0
-        self.p_starting_indices = []
-        for i in range(len(self.samples)):
-            if self.samples[i, 0] != prev_p_id:
-                self.p_starting_indices.append(i)
-            prev_p_id = self.samples[i, 0]
-        self.ps_index = 0
-        print("There are {} distinct patients with {} records".format(
-            len(self.p_starting_indices), len(self.samples)))
+                         'test_state_action_reward_df.csv')).values
+        self._process_sessions()
 
     def _features(self, index):
         """
@@ -101,8 +95,15 @@ class EnvOffPol(object):
                 "Off Policy Env patients exhausted... returning to first patient."
             )
         self.index = self.p_starting_indices[self.ps_index]
-        print("Onto patient {} at record {} of {}".format(
-            self.samples[self.index, 0], self.index, len(self.samples)))
+        # There's one sample in the dataset with 2 end of episode rewards. Skip it
+        if (self.samples[self.index, 0] == 32701):
+            print("Skipping defective sample subject_id {}".format(
+                self.samples[self.index, 0]))
+            self.ps_index += 1
+            self.index = self.p_starting_indices[self.ps_index]
+
+        #print("Onto patient {} at record {} of {}".format(
+        #    self.samples[self.index, 0], self.index, len(self.samples)))
         self.ps_index += 1
         return np.reshape(
             self._features(self.index), self.observation_space.shape)
@@ -126,3 +127,35 @@ class EnvOffPol(object):
 
     def render(self):
         print(self.samples[self.index])
+
+
+def test_reward(env):
+    """
+    Test to ensure the env is sane.
+    Verify that rewards only come at the end of one episode, episodes are
+    terminated correctly.
+
+    """
+    size = len(env.samples)
+    print("env has {} samples".format(size))
+    env.reset()
+    episode_rec = []
+    episode_reward = 0
+    for i in range(size):
+        next_state, action, reward, is_terminal, id_pref = env.step()
+        episode_rec += (id_pref, action, reward, next_state, is_terminal)
+        episode_reward += reward
+        if is_terminal:
+            env.reset()
+            if episode_reward > 15:
+                print("found episode with irregular reward {}: {}".format(
+                    episode_reward, episode_rec))
+            episode_rec = []
+            episode_reward = 0
+
+
+if __name__ == '__main__':
+    env = EnvOffPol('data3')
+    test_reward(env)
+    env.init_validate()
+    test_reward(env)

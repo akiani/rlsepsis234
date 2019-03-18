@@ -210,10 +210,14 @@ class DQN(QN):
             self.is_training: True
         }
 
-        loss_eval, grad_norm_eval, summary, _ = self.sess.run(
-            [self.loss, self.grad_norm, self.merged, self.train_op],
+        target_q_mean, loss_eval, grad_norm_eval, summary, _ = self.sess.run(
+            [
+                self.target_q_mean, self.loss, self.grad_norm, self.merged,
+                self.train_op
+            ],
             feed_dict=fd)
 
+        #print("target_q: {}".format(target_q_mean))
         # tensorboard stuff
         self.file_writer.add_summary(summary, t)
 
@@ -223,4 +227,5 @@ class DQN(QN):
         """
         Update parametes of Q' with parameters of Q
         """
-        self.sess.run(self.update_target_op)
+        target = self.sess.run(self.update_target_op)
+        print("target is {}".format(target))
